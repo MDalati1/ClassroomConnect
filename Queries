@@ -1,0 +1,185 @@
+-- Query 1: Since Classroom connect will be a paid subscription; Identify the most active users to be eligible for cashback! Users can receive points from high interactions (uploading posts, comments, and upvotes with other students) which will be converted into cashback rewards 
+
+SELECT x.StudentID, SUM(x.Num) as Activity, SUM(x.Num) * 10 as CashbackReward
+FROM
+(SELECT StudentID, COUNT(CommentID) AS Num FROM Comment GROUP BY StudentID 
+UNION 
+SELECT StudentID, COUNT(PostID) AS Num FROM Posts GROUP BY StudentID 
+UNION 
+SELECT StudentID, COUNT(UpvoteID) AS Num FROM Upvote GROUP BY StudentID) x
+GROUP BY x.StudentID
+ORDER BY Activity DESC
+LIMIT 3;
+
+-- Query 2: Given a GRE score, find a list of all programs that a user can expect to get into for engineering. Assume that user GRE Score 321 and he/she would like to know what Engineering descipline can they join
+
+SELECT st.TestID, st.StudentID, Temp1.ProgramName, Temp2.GRE_AVG_Score
+FROM StudentStandardizedTests st
+JOIN ((SELECT ProgramID, ProgramName FROM Program WHERE ProgramCategory = 'Engineering') AS Temp1
+      JOIN (SELECT StudentID, ProgramID, AVG(Result) AS GRE_AVG_Score FROM StudentStandardizedTests WHERE TestID = 'GRE' GROUP BY StudentID, ProgramID) AS Temp2
+	  ON Temp1.ProgramID = Temp2.ProgramID)
+ON st.Result > Temp2.GRE_AVG_Score
+WHERE TestID IN ('GRE')
+AND Result = 321;
+
+-- QUERY 3: Calculate the top 5 users based on their engagement score by month. Engagement score is the sum total of user posts, uptvotes and comments
+
+SELECT x.StudentID, SUM(x.ct) as TotalActivity, x.mt as MonthName FROM
+
+ (SELECT StudentID, COUNT(0) as ct, MONTHNAME(Date) as mt FROM Posts GROUP BY StudentID ,MONTHNAME(Date)
+ UNION 
+ SELECT StudentID, COUNT(0) as ct, MONTHNAME(UpVoteID_Timestamp) as mt FROM Upvote GROUP BY StudentID , MONTHNAME(UpVoteID_Timestamp)
+ UNION
+ SELECT StudentID, COUNT(0) as ct, MONTHNAME(Comment_Timestamp) as mt FROM Comment GROUP BY StudentID , MONTHNAME(Comment_Timestamp)
+ )x
+
+GROUP BY x.StudentID, MonthName
+ORDER BY TotalActivity DESC
+LIMIT 5;
+
+-- QUERY 4: Calculate the mean, standard deviation and variance of all tests scores 
+
+SELECT TestID, ROUND(AVG(Result),1) as Mean, ROUND(VARIANCE(Result),1) as Variance,  ROUND(POWER(VARIANCE(Result),0.5),1) as StdDev FROM StudentStandardizedTests 
+GROUP BY TESTID;
+
+-- QUERY 5: Find all the students in top 10 ranked schools that are interested in Finance and Real Estate (or any other combination of hobbies)
+
+Select s.StudentID, l.SchoolName, l.SchoolRanking, i.Category
+
+from StudentAcademicExperience s, School l, Interests i
+
+where s.studentID= i.StudentID and s.SchoolID=l.SchoolID and i.Category= 'Finance' and l.SchoolRanking < 11  or i.Category= 'Real_Estate' and l.SchoolRanking < 11 LIMIT 50;
+
+-- QUERY 6: A user has purchased a ‘personalized ranking’ list from your platform. Create a list of ‘safety’, ‘reach’ and ‘moderate’ business programs for that user given his GMAT score (610)
+
+SELECT x.ProgramName, 
+CASE WHEN x.diff  < 50 and x.diff >= 20 THEN 'Reach'
+WHEN x.diff <  20 and x.diff >= 10 THEN 'Moderate'
+WHEN x.diff  < 10 THEN 'Safe' 
+ELSE 'OUT OF REACH'
+END as Category , x.diff as Difference, x.Mean as AvgScore
+FROM
+(SELECT s.TestID, s.ProgramID, p.ProgramName,  ROUND(AVG(s.Result),1) as Mean, 610 as UserScore, ROUND(AVG(s.Result),1) - 610 as diff  FROM StudentStandardizedTests s, Program p
+ WHERE s.ProgramID = p.ProgramID 
+ AND p.ProgramCategory = 'Business'
+GROUP BY s.TestID, s.ProgramID
+HAVING s.TestID = 'GMAT') x;
+
+-- QUERY 7: Calculate the top product categories on the platform 
+
+select ProductID, sum(amount_student) as amount_product from 
+(select StudentID,sum(amount) as amount_student from Transactions group by StudentID) as temp , Transactions
+
+where temp.studentID= Transactions.studentID
+
+group by ProductID
+
+order by amount_product desc;
+
+-- QUERY 8: Calculate the percentage of negative comments on all the posts. Negative comments are described as comments where a user comments but does not upvote
+
+SELECT z.PostID, z.Comments, z.Upvotes as Positive,  (z.Comments - z.Upvotes) as Negative, ROUND(((z.Comments - z.Upvotes)/(z.Comments))*100,0) as PctNegative FROM
+
+ (SELECT x.PostID, x.Comments, CASE WHEN y.Upvotes is NULL then 0 ELSE y.Upvotes END as Upvotes FROM
+
+    (SELECT p.PostID, COUNT(0) as Comments FROM Posts p
+     INNER JOIN (SELECT DISTINCT PostID, StudentID FROM Comment) c
+      ON p.PostID = c.PostID
+      GROUP BY p.PostID) x
+
+  LEFT JOIN 
+
+    (SELECT p.PostID, COUNT(0) as Upvotes FROM Posts p
+    INNER JOIN (SELECT DISTINCT PostID, StudentID FROM Comment) c
+    ON p.PostID = c.PostID
+    INNER JOIN Upvote u
+    ON c.PostID = u.PostID 
+    AND c.StudentID = u.StudentID
+    GROUP BY p.PostID) y
+
+  ON
+  x.PostID = y.PostID) z
+  
+ORDER BY PctNegative DESC;
+
+-- QUERY 9:  Identify is there is any change in trends of test results over the years. Calculate avg scores of all users grouped by the year and test to identify any patterns
+
+select avg(Result), TestID, year(TestDate)  from StudentStandardizedTests
+group by TestID, year(TestDate);
+
+-- QUERY 10: Calculate the user who have spend the most and least on the platform
+
+Select a.StudentID, a.full_amount as MaxSpend , b.StudentID, b.full_amount as MinSpend
+FROM 
+(Select studentID, sum(amount) as full_amount, 1 as map from Transactions
+group by studentID
+order by full_amount Desc limit 1) a
+INNER JOIN
+(Select studentID, sum(amount) as full_amount, 1 as map from Transactions
+group by studentID
+order by full_amount limit 1) b 
+ON a.map = b.map;
+
+-- QUERY 11: Identify the top 2 MMA programs in Canada
+
+SELECT Temp1.ProgramName, Temp2.SchoolName, Temp2.Top2
+FROM (SELECT ProgramID, ProgramName FROM Program WHERE ProgramName = 'MMA') AS Temp1 
+JOIN ProgramTestRequirements pro
+ON Temp1.ProgramID = pro.ProgramID
+JOIN (SELECT SchoolName, SchoolID, SchoolRanking AS Top2 FROM School WHERE Location = 'Canada' ORDER BY Top2 ASC) AS Temp2
+ON pro.SchoolID = Temp2.SchoolID
+LIMIT 2;
+
+-- QUERY 12: What are the hashtags associated with the posts in which “McGill” appears
+
+SELECT PostID,Hashtag FROM PostHashtag WHERE PostID IN (SELECT PostID FROM Posts  WHERE Content LIKE '%McGill%');
+
+-- QUERY 13: Friend recommendation based on the posts a student has upvoted
+
+SELECT DISTINCT U.StudentID,COUNT(U.PostID) AS Common_Liked_Posts  FROM Upvote U WHERE U.PostID IN(SELECT  DISTINCT PostID FROM Upvote WHERE StudentID=89428090) GROUP BY StudentID  ORDER BY COUNT(DISTINCT U.PostID) DESC;
+
+-- QUERY 14: Display the school ID, school Name, program name and most popular hobby among the top 3 ranked universities. Exclude high schools. The hobbies must be from different programs
+
+SELECT Top3.SchoolID, Top3.SchoolName, Temp2.UniqueProgram, Temp1.UniqueHobby
+FROM (SELECT Category AS UniqueHobby, StudentID FROM Interests) AS Temp1
+JOIN StudentAcademicExperience sae
+ON Temp1.StudentID = sae.StudentID
+JOIN (SELECT DISTINCT(ProgramName) AS UniqueProgram, ProgramID, StageID FROM Program) AS Temp2
+ON sae.ProgramID = Temp2.ProgramID
+JOIN (SELECT StageID FROM AcademicStage WHERE Description != 'High School') AS Temp3
+ON Temp2.StageID = Temp3.StageID
+JOIN (SELECT SchoolID, SchoolName FROM School WHERE schoolRanking IN (1,2,3)) AS Top3
+ON sae.SchoolID = Top3.SchoolID;
+
+-- QUERY 15: Which school spends the most on the platform? Give the total amount of the highest spending school
+
+Select School.SchoolName, StudentAcademicExperience.SchoolID, Sum(Transactions.Amount) as Spend From Transactions, StudentAcademicExperience, School Where Transactions.StudentID=StudentAcademicExperience.StudentID And StudentAcademicExperience.SchoolID=School.SchoolID
+Group By SchoolName, SchoolID
+Order By Spend Desc;
+
+-- QUERY 16: Based on the group’s average result, which academic stage performs best at the GRE? Give the average score
+
+Select StudentStandardizedTests.TestID, Program.StageID, AcademicStage.Description, Avg(StudentStandardizedTests.Result) As Averagestagescore From StudentStandardizedTests, Program, AcademicStage Where StudentStandardizedTests.ProgramID=Program.ProgramID And Program.StageID=AcademicStage.StageID And TestID='Gre'
+Group By Description, StageID
+Order By Averagestagescore Desc
+Limit 1;
+
+-- QUERY 17: Management wants you to determine where its largest and smallest geographical markets are located to better understand its customer base and optimize its marketing strategies. Determine which country has the most and least amount of activity on Classroom Connect based on how many posts users from that country make
+
+Select School.Location, Count(Location) As Locationtotalposts From StudentAcademicExperience, School, Posts 
+Where StudentAcademicExperience.SchoolID=School.SchoolID And Posts.StudentID=StudentAcademicExperience.StudentID
+Group By Location
+Order By Locationtotalposts Desc;
+
+-- QUERY 18: Calculate the average response time for all users
+
+Select z.Sender , z.Receiver, AVG(z.diff) as avgtimetoreply FROM (Select y.Sender, y.Receiver, y.DM_Timestamp ,TIMEDIFF(y.DM_Timestamp , y.prevmsg) as diff FROM (Select x.*, LAG(x.DM_Timestamp,1,0) OVER (PARTITION BY x.Sender, x.Receiver ORDER BY x.DM_Timestamp) as prevmsg FROM  (SELECT * FROM DirectMessage  ORDER BY Sender, Receiver, DM_Timestamp) x ) y)z GROUP BY z.Sender , z.Receiver;
+
+-- QUERY 19: Sentiment Analysis -> Display all the comments where something positive is mentioned about McGill
+
+SELECT * FROM Comment WHERE Comment_content LIKE '%McGill%' AND  (Comment_content LIKE  '%good%' or Comment_content LIKE  '%nice%' or Comment_content LIKE  '%wonderful%' or Comment_content LIKE  '%excellent%');
+
+-- QUERY 20: Display top n posts where Analytics appears based on maximum comments/upvotes
+
+SELECT P.PostID, P.Content,COUNT(CommentID) AS Number_Of_Comments FROM Posts P LEFT JOIN Comment C ON P.PostID=C.PostID WHERE P.PostID IN(SELECT PostID FROM Posts WHERE  Content LIKE '%Analytics%') GROUP BY PostID;
+
